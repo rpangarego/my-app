@@ -9,12 +9,14 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@web3modal/ethers": "^5.0.11",
     "dotenv": "^16.4.5",
     "ethers": "^6.13.2",
     "lucide-react": "^0.427.0",
     "next": "14.2.5",
     "react": "^18",
     "react-dom": "^18",
+    "walletconnect": "^1.7.8",
     "web3modal": "^1.9.12"
   },
   "devDependencies": {

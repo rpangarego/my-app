@@ -1,4 +1,4 @@
-export const abi = [
+export const TodoListABI = [
   {
     inputs: [{ internalType: "string", name: "_content", type: "string" }],
     name: "addTodo",

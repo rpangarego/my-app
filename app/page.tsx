@@ -1,12 +1,19 @@
 "use client";
 
-import { Contract, providers, utils } from "ethers";
-import React, { useState, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import { CirclePlus } from "lucide-react";
 import Footer from "./components/Footer";
 import Header from "./components/Header";
 import TodoContent from "./components/TodoContent";
-import web3Modal from "web3modal";
+
+import { useWeb3Modal } from "@web3modal/ethers/react";
+import {
+  useWeb3ModalProvider,
+  useWeb3ModalAccount,
+} from "@web3modal/ethers/react";
+import { BrowserProvider, Contract } from "ethers";
+import { ethers } from "ethers";
+import { TodoListABI, CONTRACT_ADDRESS } from "@/constants";
 
 type Todo = {
   id: number;
@@ -15,63 +22,138 @@ type Todo = {
 };
 
 export default function Home() {
-  const [walletConnected, setWalletConnected] = useState<Boolean>(true);
   const [todos, setTodos] = useState<Todo[]>([]);
   const [todoInput, setTodoInput] = useState("");
-  const web3ModalRef = useRef();
+  const { open } = useWeb3Modal();
+  const { address, chainId, isConnected } = useWeb3ModalAccount();
+  const { walletProvider } = useWeb3ModalProvider();
 
-  const handleConnect = (e: React.MouseEvent<HTMLButtonElement>) => {
-    console.log("Connect wallet button clicked!");
+  const getProviderOrSigner = async (needSigner = false) => {
+    if (walletProvider) {
+      const provider = new ethers.BrowserProvider(walletProvider);
+      if (needSigner) {
+        return await provider.getSigner();
+      }
+      return provider;
+    }
+    return null;
   };
 
-  const handleSubmit = (e: React.MouseEvent<HTMLFormElement>) => {
-    e.preventDefault();
+  // FETCH TODO LIST FROM SMART CONTRACT
+  const fetchTodoList = async () => {
+    try {
+      const signer = await getProviderOrSigner(true);
 
-    if (todoInput) {
-      const newTodo = [
-        ...todos,
-        {
-          id: todos.length + 1,
-          content: todoInput,
-          isCompleted: false,
-        },
-      ];
-      setTodos(newTodo);
-      setTodoInput("");
+      // Ensure the signer is correctly initialized
+      if (!signer) {
+        console.error("Signer is not available.");
+        return;
+      }
+
+      // TodoListContract Object
+      const TodoListContract = new Contract(
+        CONTRACT_ADDRESS,
+        TodoListABI,
+        signer
+      );
+      const TodoListData = await TodoListContract.getAllTodos(address);
+      console.log("todo list data", address, TodoListData);
+      setTodos(TodoListData);
+    } catch (error) {
+      console.error("Error fetching todo list:", error);
     }
   };
 
-  const handleChecklist = (id: Number) => {
-    setTodos((prev) =>
-      prev.map((todo) =>
-        todo.id === id ? { ...todo, isCompleted: !todo.isCompleted } : todo
-      )
-    );
+  // ADD TODO
+  const handleSubmit = async (e: React.MouseEvent<HTMLFormElement>) => {
+    e.preventDefault();
+
+    try {
+      const signer = await getProviderOrSigner(true);
+
+      // Create TodoListContract
+      const TodoListContract = new Contract(
+        CONTRACT_ADDRESS,
+        TodoListABI,
+        signer
+      );
+
+      // Call addTodo(_content) in TodoListContract
+      await TodoListContract.addTodo(todoInput);
+      console.log("TODO INPUT", todoInput);
+      setTodoInput("");
+    } catch (error) {
+      console.error("Error add todo list:", error);
+    }
   };
 
-  const handleDelete = (id: Number) => {
-    const todoList = todos.filter((todo) => todo.id !== id);
-    setTodos(todoList);
+  // MARK TODO AS COMPLETED
+  const handleChecklist = async (id: Number) => {
+    try {
+      const signer = await getProviderOrSigner(true);
+
+      // Create TodoListContract
+      const TodoListContract = new Contract(
+        CONTRACT_ADDRESS,
+        TodoListABI,
+        signer
+      );
+
+      // Call todoIsCompleted(author, id) in TodoListContract
+      await TodoListContract.todoIsCompleted(address, id);
+    } catch (error) {
+      console.error("Error add todo list:", error);
+    }
   };
+
+  // DELETE TODO
+  const handleDelete = async (id: Number) => {
+    try {
+      const signer = await getProviderOrSigner(true);
+
+      // Create TodoListContract
+      const TodoListContract = new Contract(
+        CONTRACT_ADDRESS,
+        TodoListABI,
+        signer
+      );
+
+      // Call deleteTodo(author, id) in TodoListContract
+      await TodoListContract.deleteTodo(address, id);
+    } catch (error) {
+      console.error("Error add todo list:", error);
+    }
+  };
+
+  useEffect(() => {
+    if (isConnected) {
+      setInterval(() => {
+        console.log(todos);
+        fetchTodoList();
+      }, 5000); // fetch todo data every 5 secs
+    }
+  }, [isConnected, walletProvider]);
 
   const renderTodoContent = () => {
-    if (!walletConnected) {
+    if (!isConnected) {
       return (
         <p>
           Please connect to your <br /> metamask wallet to continue.
           <br />
           <br />
-          <button className="btn btn-primary" onClick={handleConnect}>
+          {/* button to open web3modal wallet */}
+          <button className="btn btn-primary" onClick={() => open()}>
             Connect
           </button>
         </p>
       );
-    } else if (walletConnected) {
+    } else {
       if (!todos.length) {
         return <p>You have nothing to do (yet)</p>;
       } else {
-        const todoContent = todos.map((todo) => (
+        const todoContent = todos.map((todo, idx) => (
           <TodoContent
+            key={idx}
             id={todo.id}
             content={todo.content}
             isCompleted={todo.isCompleted}
@@ -86,7 +168,7 @@ export default function Home() {
 
   return (
     <div className="w-3/4 my-10 mx-auto sm:w-3/4 md:w-3/5 lg:w-2/4 xl:w-1/4">
-      <Header walletStatus={walletConnected} />
+      <Header walletStatus={isConnected} account={address} chainId={chainId} />
 
       {/* TODO LIST COMPONENT */}
       <div className="bg-white shadow-md mt-5 border rounded-lg p-5">
@@ -97,7 +179,7 @@ export default function Home() {
               type="text"
               className="w-5/6 input-text"
               placeholder="Type your plan..."
-              disabled={Boolean(!walletConnected)}
+              disabled={Boolean(!isConnected)}
               value={todoInput}
               onChange={(e) => setTodoInput(e.target.value)}
               autoComplete="off"
@@ -105,9 +187,9 @@ export default function Home() {
             <button
               type="submit"
               className={`w-1/6 flex justify-center btn ${
-                walletConnected ? "btn-primary" : "btn-disabled"
+                isConnected ? "btn-primary" : "btn-disabled"
               }`}
-              disabled={Boolean(!walletConnected)}
+              disabled={Boolean(!isConnected)}
             >
               <CirclePlus />
             </button>
